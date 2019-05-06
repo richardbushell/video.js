@@ -1,7 +1,7 @@
 {
   "name": "video.js",
   "description": "An HTML5 and Flash video player with a common API and skin for both.",
-  "version": "7.5.3",
+  "version": "7.5.4",
   "main": "./dist/video.cjs.js",
   "module": "./dist/video.es.js",
   "style": "./dist/video-js.css",
@@ -49,8 +49,9 @@
     "watch": "npm-run-all -p watch:*",
     "watch:lang": "chokidar --initial 'lang/**/*.json' -c 'npm run build:lang'",
     "watch:rollup": "rollup -c -w --no-progress",
-    "watch:css-default": "npm run build:css:default -- --watch 'src/**/**/*.scss'",
-    "watch:css-cdn": "npm run build:css:cdn -- --watch 'src/**/**/*.scss'",
+    "watch:css": "npm-run-all -p build:css:default build:css:cdn watch:css:*",
+    "watch:css:default": "npm run build:css:default -- --watch 'src/**/**/*.scss'",
+    "watch:css:cdn": "npm run build:css:cdn -- --watch 'src/**/**/*.scss'",
     "assets": "node build/assets.js",
     "lint": "vjsstandard",
     "lint-errors": "vjsstandard --errors",
@@ -79,12 +80,12 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.2.0",
-    "@videojs/http-streaming": "1.9.3",
+    "@videojs/http-streaming": "1.10.1",
     "global": "4.3.2",
     "keycode": "^2.2.0",
     "safe-json-parse": "4.0.0",
     "tsml": "1.0.1",
-    "videojs-font": "3.1.0",
+    "videojs-font": "3.1.1",
     "videojs-vtt.js": "0.14.1",
     "xhr": "2.4.0"
   },
@@ -147,12 +148,12 @@
     "semver": "^5.6.0",
     "shelljs": "^0.8.3",
     "shx": "^0.3.2",
-    "sinon": "^1.16.1",
+    "sinon": "^7.3.2",
     "tui-jsdoc-template": "^1.2.2",
     "uglify-js": "^3.4.9",
     "unified": "^7.0.2",
     "videojs-flash": "^2.1.2",
-    "videojs-generate-karma-config": "~5.1.0",
+    "videojs-generate-karma-config": "~5.2.0",
     "videojs-languages": "^2.0.0",
     "videojs-standard": "^8.0.2",
     "watchify": "^3.11.0",
@@ -175,7 +176,6 @@
   },
   "greenkeeper": {
     "ignore": [
-      "sinon",
       "webpack"
     ]
   },
