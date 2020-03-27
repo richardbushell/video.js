@@ -7,7 +7,6 @@ import Component from './component.js';
 import {version} from '../../package.json';
 import document from 'global/document';
 import window from 'global/window';
-import tsml from 'tsml';
 import evented from './mixins/evented';
 import {isEvented, addEventedCallback} from './mixins/evented';
 import * as Events from './utils/events.js';
@@ -17,7 +16,7 @@ import * as Guid from './utils/guid.js';
 import * as browser from './utils/browser.js';
 import {IE_VERSION, IS_CHROME, IS_WINDOWS} from './utils/browser.js';
 import log, { createLogger } from './utils/log.js';
-import toTitleCase, { titleCaseEquals } from './utils/to-title-case.js';
+import {toTitleCase, titleCaseEquals} from './utils/string-cases.js';
 import { createTimeRange } from './utils/time-ranges.js';
 import { bufferedPercent } from './utils/buffer.js';
 import * as stylesheet from './utils/stylesheet.js';
@@ -817,7 +816,7 @@ class Player extends Component {
       return this[privDimension] || 0;
     }
 
-    if (value === '') {
+    if (value === '' || value === 'auto') {
       // If an empty string is given, reset the dimension to be automatic
       this[privDimension] = undefined;
       this.updateStyleEl_();
@@ -1211,10 +1210,8 @@ class Player extends Component {
    */
   tech(safety) {
     if (safety === undefined) {
-      log.warn(tsml`
-        Using the tech directly can be dangerous. I hope you know what you're doing.
-        See https://github.com/videojs/video.js/issues/2617 for more info.
-      `);
+      log.warn('Using the tech directly can be dangerous. I hope you know what you\'re doing.\n' +
+        'See https://github.com/videojs/video.js/issues/2617 for more info.\n');
     }
 
     return this.tech_;
@@ -1528,20 +1525,20 @@ class Player extends Component {
       // if the `sourceset` `src` was an empty string
       // wait for a `loadstart` to update the cache to `currentSrc`.
       // If a sourceset happens before a `loadstart`, we reset the state
-      // as this function will be called again.
       if (!event.src) {
-        const updateCache = (e) => {
-          if (e.type !== 'sourceset') {
-            const techSrc = this.techGet('currentSrc');
-
-            this.lastSource_.tech = techSrc;
-            this.updateSourceCaches_(techSrc);
+        this.tech_.any(['sourceset', 'loadstart'], (e) => {
+          // if a sourceset happens before a `loadstart` there
+          // is nothing to do as this `handleTechSourceset_`
+          // will be called again and this will be handled there.
+          if (e.type === 'sourceset') {
+            return;
           }
 
-          this.tech_.off(['sourceset', 'loadstart'], updateCache);
-        };
+          const techSrc = this.techGet('currentSrc');
 
-        this.tech_.one(['sourceset', 'loadstart'], updateCache);
+          this.lastSource_.tech = techSrc;
+          this.updateSourceCaches_(techSrc);
+        });
       }
     }
     this.lastSource_ = {player: this.currentSource().src, tech: event.src};
@@ -2941,8 +2938,10 @@ class Player extends Component {
     const excludeElement = (el) => {
       const tagName = el.tagName.toLowerCase();
 
-      // These tags will be excluded entirely.
-      const excludedTags = ['textarea'];
+      // The first and easiest test is for `contenteditable` elements.
+      if (el.isContentEditable) {
+        return true;
+      }
 
       // Inputs matching these types will still trigger hotkey handling as
       // they are not text inputs.
@@ -2958,6 +2957,9 @@ class Player extends Component {
       if (tagName === 'input') {
         return allowedInputTypes.indexOf(el.type) === -1;
       }
+
+      // The final test is by tag name. These tags will be excluded entirely.
+      const excludedTags = ['textarea'];
 
       return excludedTags.indexOf(tagName) !== -1;
     };

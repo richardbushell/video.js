@@ -7,14 +7,23 @@ import TextTrack from '../../../src/js/tracks/text-track.js';
 import TestHelpers from '../test-helpers.js';
 import sinon from 'sinon';
 import log from '../../../src/js/utils/log.js';
+import XHR from '@videojs/xhr';
 
 QUnit.module('Text Track', {
   beforeEach() {
     this.tech = new TechFaker();
+    this.oldXMLHttpRequest = XHR.XMLHttpRequest;
+    this.oldXDomainRequest = XHR.XDomainRequest;
+    this.xhr = sinon.useFakeXMLHttpRequest();
+    XHR.XMLHttpRequest = this.xhr;
+    XHR.XDomainRequest = this.xhr;
   },
   afterEach() {
     this.tech.dispose();
     this.tech = null;
+    XHR.XMLHttpRequest = this.oldXMLHttpRequest;
+    XHR.XDomainRequest = this.oldXDomainRequest;
+    this.xhr.restore();
   }
 });
 
@@ -416,7 +425,7 @@ QUnit.test('tracks are parsed if vttjs is loaded', function(assert) {
   let parserCreated = false;
   const reqs = [];
 
-  window.xhr.onCreate = function(req) {
+  this.xhr.onCreate = function(req) {
     reqs.push(req);
   };
 
@@ -453,7 +462,7 @@ QUnit.test('tracks are parsed once vttjs is loaded', function(assert) {
   let parserCreated = false;
   const reqs = [];
 
-  window.xhr.onCreate = function(req) {
+  this.xhr.onCreate = function(req) {
     reqs.push(req);
   };
 
@@ -503,10 +512,9 @@ QUnit.test('stops processing if vttjs loading errored out', function(assert) {
   const errorSpy = sinon.spy();
   const oldVTT = window.WebVTT;
   const oldLogError = log.error;
-  const parserCreated = false;
   const reqs = [];
 
-  window.xhr.onCreate = function(req) {
+  this.xhr.onCreate = function(req) {
     reqs.push(req);
   };
 
@@ -529,20 +537,14 @@ QUnit.test('stops processing if vttjs loading errored out', function(assert) {
 
   reqs.pop().respond(200, null, 'WEBVTT\n');
 
-  assert.ok(!parserCreated, 'WebVTT is not loaded, do not try to parse yet');
+  testTech.trigger('vttjserror');
+
+  assert.equal(errorSpy.callCount, 1, 'vttjs failed to load, so log.error was called');
 
   testTech.trigger('vttjserror');
-  const offSpyCall = testTech.off.getCall(0);
 
-  assert.ok(errorSpy.called, 'vttjs failed to load, so log.error was called');
-  if (errorSpy.called) {
-    assert.ok(
-      /^vttjs failed to load, stopping trying to process/.test(errorSpy.getCall(0).args[0]),
-      'log.error was called with the expected message'
-    );
-  }
-  assert.ok(!parserCreated, 'WebVTT is not loaded, do not try to parse yet');
-  assert.ok(offSpyCall, 'tech.off was called');
+  // vttjserror not called again
+  assert.equal(errorSpy.callCount, 1, 'vttjserror handler not called again');
 
   clock.restore();
   window.WebVTT = oldVTT;

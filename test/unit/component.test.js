@@ -2,7 +2,7 @@
 import window from 'global/window';
 import Component from '../../src/js/component.js';
 import * as Dom from '../../src/js/utils/dom.js';
-import * as DomData from '../../src/js/utils/dom-data';
+import DomData from '../../src/js/utils/dom-data';
 import * as Events from '../../src/js/utils/events.js';
 import * as Obj from '../../src/js/utils/obj';
 import * as browser from '../../src/js/utils/browser.js';
@@ -340,13 +340,14 @@ QUnit.test('should dispose of component and children', function(assert) {
   const child = comp.addChild('Component');
 
   assert.ok(comp.children().length === 1);
+  assert.notOk(comp.isDisposed(), 'the component reports that it is not disposed');
 
   // Add a listener
   comp.on('click', function() {
     return true;
   });
   const el = comp.el();
-  const data = DomData.getData(el);
+  const data = DomData.get(el);
 
   let hasDisposed = false;
   let bubbles = null;
@@ -365,11 +366,12 @@ QUnit.test('should dispose of component and children', function(assert) {
   assert.ok(!comp.el(), 'component element was deleted');
   assert.ok(!child.children(), 'child children were deleted');
   assert.ok(!child.el(), 'child element was deleted');
-  assert.ok(!DomData.hasData(el), 'listener data nulled');
+  assert.ok(!DomData.has(el), 'listener data nulled');
   assert.ok(
     !Object.getOwnPropertyNames(data).length,
     'original listener data object was emptied'
   );
+  assert.ok(comp.isDisposed(), 'the component reports that it is disposed');
 });
 
 QUnit.test('should add and remove event listeners to element', function(assert) {
@@ -789,7 +791,7 @@ QUnit.test('should emit a tap event', function(assert) {
 
   assert.expect(3);
   // Fake touch support. Real touch support isn't needed for this test.
-  browser.TOUCH_ENABLED = true;
+  browser.stub_TOUCH_ENABLED(true);
 
   comp.emitTapEvents();
   comp.on('tap', function() {
@@ -837,7 +839,7 @@ QUnit.test('should emit a tap event', function(assert) {
   comp.trigger('touchend');
 
   // Reset to orignial value
-  browser.TOUCH_ENABLED = origTouch;
+  browser.stub_TOUCH_ENABLED(origTouch);
   comp.dispose();
 });
 
@@ -978,25 +980,20 @@ QUnit.test('*AnimationFrame methods fall back to timers if rAF not supported', f
 
 QUnit.test('setTimeout should remove dispose handler on trigger', function(assert) {
   const comp = new Component(getFakePlayer());
-  const el = comp.el();
-  const data = DomData.getData(el);
 
   comp.setTimeout(() => {}, 1);
 
-  assert.equal(data.handlers.dispose.length, 2, 'we got a new dispose handler');
-  assert.ok(/vjs-timeout-\d/.test(data.handlers.dispose[1].guid), 'we got a new dispose handler');
+  assert.equal(comp.setTimeoutIds_.size, 1, 'we removed our dispose handle');
 
   this.clock.tick(1);
 
-  assert.equal(data.handlers.dispose.length, 1, 'we removed our dispose handle');
+  assert.equal(comp.setTimeoutIds_.size, 0, 'we removed our dispose handle');
 
   comp.dispose();
 });
 
 QUnit.test('requestAnimationFrame should remove dispose handler on trigger', function(assert) {
   const comp = new Component(getFakePlayer());
-  const el = comp.el();
-  const data = DomData.getData(el);
   const oldRAF = window.requestAnimationFrame;
   const oldCAF = window.cancelAnimationFrame;
 
@@ -1012,17 +1009,126 @@ QUnit.test('requestAnimationFrame should remove dispose handler on trigger', fun
 
   comp.requestAnimationFrame(spyRAF);
 
-  assert.equal(data.handlers.dispose.length, 2, 'we got a new dispose handler');
-  assert.ok(/vjs-raf-\d/.test(data.handlers.dispose[1].guid), 'we got a new dispose handler');
+  assert.equal(comp.rafIds_.size, 1, 'we got a new dispose handler');
 
   this.clock.tick(1);
 
-  assert.equal(data.handlers.dispose.length, 1, 'we removed our dispose handle');
+  assert.equal(comp.rafIds_.size, 0, 'we removed our dispose handle');
 
   comp.dispose();
 
   window.requestAnimationFrame = oldRAF;
   window.cancelAnimationFrame = oldCAF;
+});
+
+QUnit.test('requestAnimationFrame should remove dispose handler on trigger', function(assert) {
+  const comp = new Component(getFakePlayer());
+  const oldRAF = window.requestAnimationFrame;
+  const oldCAF = window.cancelAnimationFrame;
+
+  // Stub the window.*AnimationFrame methods with window.setTimeout methods
+  // so we can control when the callbacks are called via sinon's timer stubs.
+  window.requestAnimationFrame = (fn) => window.setTimeout(fn, 1);
+  window.cancelAnimationFrame = (id) => window.clearTimeout(id);
+
+  // Make sure the component thinks it supports rAF.
+  comp.supportsRaf_ = true;
+
+  const spyRAF = sinon.spy();
+
+  comp.requestAnimationFrame(spyRAF);
+
+  assert.equal(comp.rafIds_.size, 1, 'we got a new dispose handler');
+
+  this.clock.tick(1);
+
+  assert.equal(comp.rafIds_.size, 0, 'we removed our dispose handle');
+
+  comp.dispose();
+
+  window.requestAnimationFrame = oldRAF;
+  window.cancelAnimationFrame = oldCAF;
+});
+
+QUnit.test('setTimeout should be canceled on dispose', function(assert) {
+  const comp = new Component(getFakePlayer());
+  let called = false;
+  let clearId;
+  const setId = comp.setTimeout(() => {
+    called = true;
+  }, 1);
+
+  const clearTimeout = comp.clearTimeout;
+
+  comp.clearTimeout = (id) => {
+    clearId = id;
+    return clearTimeout.call(comp, id);
+  };
+
+  assert.equal(comp.setTimeoutIds_.size, 1, 'we added a timeout id');
+
+  comp.dispose();
+
+  assert.equal(comp.setTimeoutIds_.size, 0, 'we removed our timeout id');
+  assert.equal(clearId, setId, 'clearTimeout was called');
+
+  this.clock.tick(1);
+
+  assert.equal(called, false, 'setTimeout was never called');
+});
+
+QUnit.test('requestAnimationFrame should be canceled on dispose', function(assert) {
+  const comp = new Component(getFakePlayer());
+  let called = false;
+  let clearId;
+  const setId = comp.requestAnimationFrame(() => {
+    called = true;
+  });
+
+  const cancelAnimationFrame = comp.cancelAnimationFrame;
+
+  comp.cancelAnimationFrame = (id) => {
+    clearId = id;
+    return cancelAnimationFrame.call(comp, id);
+  };
+
+  assert.equal(comp.rafIds_.size, 1, 'we added a raf id');
+
+  comp.dispose();
+
+  assert.equal(comp.rafIds_.size, 0, 'we removed a raf id');
+  assert.equal(clearId, setId, 'clearAnimationFrame was called');
+
+  this.clock.tick(1);
+
+  assert.equal(called, false, 'requestAnimationFrame was never called');
+});
+
+QUnit.test('setInterval should be canceled on dispose', function(assert) {
+  const comp = new Component(getFakePlayer());
+  let called = false;
+  let clearId;
+  const setId = comp.setInterval(() => {
+    called = true;
+  });
+
+  const clearInterval = comp.clearInterval;
+
+  comp.clearInterval = (id) => {
+    clearId = id;
+    return clearInterval.call(comp, id);
+  };
+
+  assert.equal(comp.setIntervalIds_.size, 1, 'we added an interval id');
+
+  comp.dispose();
+
+  assert.equal(comp.setIntervalIds_.size, 0, 'we removed a raf id');
+  assert.equal(clearId, setId, 'clearInterval was called');
+
+  this.clock.tick(1);
+
+  assert.equal(called, false, 'setInterval was never called');
 });
 
 QUnit.test('$ and $$ functions', function(assert) {

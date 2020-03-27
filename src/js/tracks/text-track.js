@@ -8,7 +8,7 @@ import log from '../utils/log.js';
 import window from 'global/window';
 import Track from './track.js';
 import { isCrossOrigin } from '../utils/url.js';
-import XHR from 'xhr';
+import XHR from '@videojs/xhr';
 import merge from '../utils/merge-options';
 
 /**
@@ -93,19 +93,13 @@ const loadTrack = function(src, track) {
       if (track.tech_) {
         // to prevent use before define eslint error, we define loadHandler
         // as a let here
-        let loadHandler;
-        const errorHandler = () => {
-          log.error(`vttjs failed to load, stopping trying to process ${track.src}`);
-          track.tech_.off('vttjsloaded', loadHandler);
-        };
-
-        loadHandler = () => {
-          track.tech_.off('vttjserror', errorHandler);
+        track.tech_.any(['vttjsloaded', 'vttjserror'], (event) => {
+          if (event.type === 'vttjserror') {
+            log.error(`vttjs failed to load, stopping trying to process ${track.src}`);
+            return;
+          }
           return parseCues(responseBody, track);
-        };
-
-        track.tech_.one('vttjsloaded', loadHandler);
-        track.tech_.one('vttjserror', errorHandler);
+        });
       }
     } else {
       parseCues(responseBody, track);
