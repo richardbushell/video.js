@@ -3,13 +3,20 @@ import median from './utils/median.js';
 import mergeOptions from './utils/merge-options.js';
 import document from 'global/document';
 import * as browser from './utils/browser.js';
+import * as Fn from './utils/fn.js';
+
+const defaults = {
+  // Number of seconds of live window (seekableEnd - seekableStart) that
+  // a video needs to have before the liveui will be shown.
+  trackingThreshold: 30
+};
 
 /* track when we are at the live edge, and other helpers for live playback */
 class LiveTracker extends Component {
 
   constructor(player, options) {
     // LiveTracker does not need an element
-    const options_ = mergeOptions({createEl: false}, options);
+    const options_ = mergeOptions(defaults, options, {createEl: false});
 
     super(player, options_);
 
@@ -88,7 +95,13 @@ class LiveTracker extends Component {
       this.trigger('seekableendchange');
     }
 
-    this.pastSeekEnd_ = this.pastSeekEnd() + 0.03;
+    // we should reset pastSeekEnd when the value
+    // is much higher than seeking increment.
+    if (this.pastSeekEnd() > this.seekableIncrement_ * 1.5) {
+      this.pastSeekEnd_ = 0;
+    } else {
+      this.pastSeekEnd_ = this.pastSeekEnd() + 0.03;
+    }
 
     if (this.isBehind_() !== this.behindLiveEdge()) {
       this.behindLiveEdge_ = this.isBehind_();
@@ -101,9 +114,13 @@ class LiveTracker extends Component {
    * and start/stop tracking accordingly.
    */
   handleDurationchange() {
-    if (this.player_.duration() === Infinity) {
+    if (this.player_.duration() === Infinity && this.liveWindow() >= this.options_.trackingThreshold) {
+      if (this.player_.options_.liveui) {
+        this.player_.addClass('vjs-liveui');
+      }
       this.startTracking();
     } else {
+      this.player_.removeClass('vjs-liveui');
       this.stopTracking();
     }
   }
@@ -123,7 +140,7 @@ class LiveTracker extends Component {
       this.timeupdateSeen_ = this.player_.hasStarted();
     }
 
-    this.trackingInterval_ = this.setInterval(this.trackLive_, 30);
+    this.trackingInterval_ = this.setInterval(this.trackLive_, Fn.UPDATE_REFRESH_INTERVAL);
     this.trackLive_();
 
     this.on(this.player_, 'play', this.trackLive_);

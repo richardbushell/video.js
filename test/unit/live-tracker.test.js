@@ -4,12 +4,62 @@ import {createTimeRanges} from '../../src/js/utils/time-ranges.js';
 import sinon from 'sinon';
 
 QUnit.module('LiveTracker', () => {
+  QUnit.module('options', {
+    beforeEach() {
+      this.clock = sinon.useFakeTimers();
+    },
+    afterEach() {
+      this.player.dispose();
+      this.clock.restore();
+    }
+  });
+
+  QUnit.test('liveui true, trackingThreshold is met', function(assert) {
+    this.player = TestHelpers.makePlayer({liveui: true});
+    this.player.seekable = () => createTimeRanges(0, 30);
+
+    this.player.duration(Infinity);
+
+    assert.ok(this.player.hasClass('vjs-liveui'), 'has vjs-liveui');
+    assert.ok(this.player.liveTracker.isTracking(), 'is tracking');
+  });
+
+  QUnit.test('liveui true, trackingThreshold is not met', function(assert) {
+    this.player = TestHelpers.makePlayer({liveui: true, liveTracker: {trackingThreshold: 31}});
+    this.player.seekable = () => createTimeRanges(0, 30);
+
+    this.player.duration(Infinity);
+
+    assert.notOk(this.player.hasClass('vjs-liveui'), 'does not have vjs-iveui');
+    assert.notOk(this.player.liveTracker.isTracking(), 'is not tracking');
+  });
+
+  QUnit.test('liveui false, trackingThreshold is met', function(assert) {
+    this.player = TestHelpers.makePlayer({liveui: false});
+    this.player.seekable = () => createTimeRanges(0, 30);
+
+    this.player.duration(Infinity);
+
+    assert.notOk(this.player.hasClass('vjs-liveui'), 'does not have vjs-liveui');
+    assert.ok(this.player.liveTracker.isTracking(), 'is tracking');
+  });
+
+  QUnit.test('liveui false, trackingThreshold is not met', function(assert) {
+    this.player = TestHelpers.makePlayer({liveui: false, liveTracker: {trackingThreshold: 31}});
+    this.player.seekable = () => createTimeRanges(0, 30);
+
+    this.player.duration(Infinity);
+
+    assert.notOk(this.player.hasClass('vjs-liveui'), 'does not have vjs-liveui');
+    assert.notOk(this.player.liveTracker.isTracking(), 'is not tracking');
+  });
 
   QUnit.module('start/stop', {
     beforeEach() {
       this.clock = sinon.useFakeTimers();
 
       this.player = TestHelpers.makePlayer({liveui: true});
+      this.player.seekable = () => createTimeRanges(0, 30);
 
       this.liveTracker = this.player.liveTracker;
     },
@@ -46,6 +96,7 @@ QUnit.module('LiveTracker', () => {
       this.player = TestHelpers.makePlayer();
 
       this.liveTracker = this.player.liveTracker;
+      this.player.seekable = () => createTimeRanges(0, 30);
       this.player.duration(Infinity);
 
       this.liveEdgeChanges = 0;
@@ -68,9 +119,12 @@ QUnit.module('LiveTracker', () => {
   QUnit.test('Triggers liveedgechange when we fall behind and catch up', function(assert) {
 
     this.liveTracker.seekableIncrement_ = 6;
+    this.player.seekable = () => createTimeRanges(0, 20);
     this.player.trigger('timeupdate');
-    this.player.currentTime = () => 0;
-    this.clock.tick(20000);
+    this.player.currentTime = () => 14;
+    this.clock.tick(6000);
+    this.player.seekable = () => createTimeRanges(0, 26);
+    this.clock.tick(1000);
 
     assert.equal(this.liveEdgeChanges, 1, 'should have one live edge change');
     assert.ok(this.liveTracker.behindLiveEdge(), 'behind live edge');
@@ -83,22 +137,22 @@ QUnit.module('LiveTracker', () => {
   });
 
   QUnit.test('pastSeekEnd should update when seekable changes', function(assert) {
-    assert.strictEqual(this.liveTracker.liveCurrentTime(), 0.03, 'liveCurrentTime is now 0.03');
-    this.clock.tick(2000);
+    assert.strictEqual(this.liveTracker.liveCurrentTime(), 30.03, 'liveCurrentTime is now 30');
+    this.clock.tick(2010);
 
     assert.ok(this.liveTracker.pastSeekEnd() > 2, 'pastSeekEnd should be over 2s');
 
-    this.player.seekable = () => createTimeRanges(0, 2);
+    this.player.seekable = () => createTimeRanges(30, 61);
 
     this.clock.tick(30);
     assert.strictEqual(this.liveTracker.pastSeekEnd(), 0.03, 'pastSeekEnd start at 0.03 again');
-    assert.strictEqual(this.liveTracker.liveCurrentTime(), 2.03, 'liveCurrentTime is now 2.03');
-    assert.equal(this.seekableEndChanges, 1, 'should be one seek end change');
+    assert.strictEqual(this.liveTracker.liveCurrentTime(), 61.03, 'liveCurrentTime is now 2.03');
   });
 
   QUnit.test('seeks to live edge on seekableendchange', function(assert) {
     this.player.trigger('timeupdate');
 
+    this.player.seekable = () => createTimeRanges(0, 6);
     this.liveTracker.seekableIncrement_ = 2;
     let currentTime = 0;
 

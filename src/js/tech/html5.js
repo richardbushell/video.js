@@ -11,9 +11,10 @@ import window from 'global/window';
 import {assign} from '../utils/obj';
 import mergeOptions from '../utils/merge-options.js';
 import {toTitleCase} from '../utils/string-cases.js';
-import {NORMAL as TRACK_TYPES} from '../tracks/track-types';
+import {NORMAL as TRACK_TYPES, REMOTE} from '../tracks/track-types';
 import setupSourceset from './setup-sourceset';
 import defineLazyProperty from '../utils/define-lazy-property.js';
+import {silencePromise} from '../utils/promise';
 
 /**
  * HTML5 Media Controller - Wrapper for HTML5 Media API
@@ -273,13 +274,26 @@ class Html5 extends Tech {
       return;
     }
     const listeners = {
-      change(e) {
-        techTracks.trigger({
+      change: (e) => {
+        const event = {
           type: 'change',
           target: techTracks,
           currentTarget: techTracks,
           srcElement: techTracks
-        });
+        };
+
+        techTracks.trigger(event);
+
+        // if we are a text track change event, we should also notify the
+        // remote text track list. This can potentially cause a false positive
+        // if we were to get a change event on a non-remote track and
+        // we triggered the event on the remote text track list which doesn't
+        // contain that track. However, best practices mean looping through the
+        // list of tracks and searching for the appropriate mode value, so,
+        // this shouldn't pose an issue
+        if (name === 'text') {
+          this[REMOTE.remoteText.getterName]().trigger(event);
+        }
       },
       addtrack(e) {
         techTracks.addTrack(e.track);
@@ -639,16 +653,24 @@ class Html5 extends Tech {
     if (video.paused && video.networkState <= video.HAVE_METADATA) {
       // attempt to prime the video element for programmatic access
       // this isn't necessary on the desktop but shouldn't hurt
-      this.el_.play();
+      silencePromise(this.el_.play());
 
       // playing and pausing synchronously during the transition to fullscreen
       // can get iOS ~6.1 devices into a play/pause loop
       this.setTimeout(function() {
         video.pause();
-        video.webkitEnterFullScreen();
+        try {
+          video.webkitEnterFullScreen();
+        } catch (e) {
+          this.trigger('fullscreenerror', e);
+        }
       }, 0);
     } else {
-      video.webkitEnterFullScreen();
+      try {
+        video.webkitEnterFullScreen();
+      } catch (e) {
+        this.trigger('fullscreenerror', e);
+      }
     }
   }
 
@@ -656,6 +678,11 @@ class Html5 extends Tech {
    * Request that the `HTML5` Tech exit fullscreen.
    */
   exitFullScreen() {
+    if (!this.el_.webkitDisplayingFullscreen) {
+      this.trigger('fullscreenerror', new Error('The video is not fullscreen'));
+      return;
+    }
+
     this.el_.webkitExitFullScreen();
   }
 
@@ -1170,7 +1197,7 @@ Html5.Events = [
   ['featuresNativeVideoTracks', 'supportsNativeVideoTracks'],
   ['featuresNativeAudioTracks', 'supportsNativeAudioTracks']
 ].forEach(function([key, fn]) {
-  defineLazyProperty(Html5.prototype, key, () => Html5[fn](), false);
+  defineLazyProperty(Html5.prototype, key, () => Html5[fn](), true);
 });
 
 /**

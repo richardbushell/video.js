@@ -15,6 +15,7 @@ import window from 'global/window';
 import * as middleware from '../../src/js/tech/middleware.js';
 import * as Events from '../../src/js/utils/events.js';
 import pkg from '../../package.json';
+import * as Guid from '../../src/js/utils/guid.js';
 
 QUnit.module('Player', {
   beforeEach() {
@@ -30,6 +31,17 @@ QUnit.module('Player', {
   afterEach() {
     this.clock.restore();
   }
+});
+
+QUnit.test('the default ID of the first player remains "vjs_video_3"', function(assert) {
+  Guid.resetGuidInTestsOnly();
+  const tag = document.createElement('video');
+
+  tag.className = 'video-js';
+
+  const player = TestHelpers.makePlayer({}, tag);
+
+  assert.strictEqual(player.id(), 'vjs_video_3', 'id is correct');
 });
 
 QUnit.test('should create player instance that inherits from component and dispose it', function(assert) {
@@ -2200,4 +2212,32 @@ QUnit.test('controlBar behaviour with mouseenter and mouseleave events', functio
   assert.equal(player.options_.inactivityTimeout, player.cache_.inactivityTimeout, 'mouse leaves control-bar, inactivityTimeout is set to default value (2000)');
 
   player.dispose();
+});
+
+QUnit.test('Should be able to set a currentTime after player initialization as soon the canplay event is fired', function(assert) {
+  const player = TestHelpers.makePlayer({});
+
+  player.src('xyz.mp4');
+  player.currentTime(500);
+  assert.strictEqual(player.currentTime(), 0, 'currentTime value was not changed');
+  this.clock.tick(100);
+  player.trigger('canplay');
+  assert.strictEqual(player.currentTime(), 500, 'currentTime value is the one passed after initialization');
+});
+
+QUnit.test('Should accept multiple calls to currentTime after player initialization and apply the last value as soon the canplay event is fired', function(assert) {
+  const player = TestHelpers.makePlayer({});
+  const spyInitTime = sinon.spy(player, 'applyInitTime_');
+  const spyCurrentTime = sinon.spy(player, 'currentTime');
+
+  player.src('xyz.mp4');
+  player.currentTime(500);
+  player.currentTime(600);
+  player.currentTime(700);
+  player.currentTime(800);
+  this.clock.tick(100);
+  player.trigger('canplay');
+  assert.equal(spyInitTime.callCount, 1, 'After multiple calls to currentTime just apply the last one');
+  assert.ok(spyCurrentTime.calledAfter(spyInitTime), 'currentTime was called on canplay event listener');
+  assert.equal(player.currentTime(), 800, 'The last value passed is stored as the currentTime value');
 });
