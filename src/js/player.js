@@ -2005,7 +2005,7 @@ class Player extends Component {
       isFs = el.msMatchesSelector(':' + this.fsApi_.fullscreen);
     }
 
-    this.isFullscreen(isFs);
+    this.isFullscreen(document[fsApi.fullscreenElement] === this.el() || this.el().matches(':' + fsApi.fullscreen));
 
     // If cancelling fullscreen, remove event listener.
     if (this.isFullscreen() === false) {
